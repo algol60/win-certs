@@ -39,6 +39,7 @@ class CRYPTOAPI_BLOB(Structure):
         ('cbData', DWORD),
         ('pbData', POINTER(BYTE))
     ]
+CRYPT_DATA_BLOB = CRYPTOAPI_BLOB
 CRYPT_INTEGER_BLOB = CRYPTOAPI_BLOB
 CRYPT_OBJID_BLOB = CRYPTOAPI_BLOB
 CERT_NAME_BLOB = CRYPTOAPI_BLOB
@@ -105,11 +106,13 @@ class SYSTEMTIME(Structure):
         ('wMilliseconds', WORD)
     ]
 
-
-CertCloseStore = _win32(crypt32, 'CertCloseStore', [c_void_p, DWORD], BOOL)
+CertAddCertificateContextToStore = _win32(crypt32, 'CertAddCertificateContextToStore', [HCERTSTORE, POINTER(CERT_CONTEXT), DWORD, POINTER(CERT_CONTEXT)], BOOL)
+CertCloseStore = _win32(crypt32, 'CertCloseStore', [HCERTSTORE, DWORD], BOOL)
 CertEnumCertificatesInStore = _win32(crypt32, 'CertEnumCertificatesInStore', [HCERTSTORE, POINTER(CERT_CONTEXT)], POINTER(CERT_CONTEXT))
 CertGetIntendedKeyUsage = _win32(crypt32, 'CertGetIntendedKeyUsage', [DWORD, POINTER(CERT_INFO), POINTER(BYTE), DWORD], BOOL)
 CertGetNameString = _win32(crypt32, 'CertGetNameStringW', [POINTER(CERT_CONTEXT), DWORD, DWORD, c_void_p, LPWSTR, DWORD], DWORD)
 CertNameToStr = _win32(crypt32, 'CertNameToStrW', [DWORD, c_void_p, DWORD, LPWSTR, DWORD], DWORD)
-FileTimeToSystemTime = _win32(kernel32, 'FileTimeToSystemTime', [POINTER(FILETIME), POINTER(SYSTEMTIME)], BOOL)
+CertOpenStore = _win32(crypt32, 'CertOpenStore', [DWORD, DWORD, c_void_p, DWORD, c_void_p], HCERTSTORE)
 CertOpenSystemStore = _win32(crypt32, 'CertOpenSystemStoreW', [c_void_p, LPCWSTR], HCERTSTORE)
+FileTimeToSystemTime = _win32(kernel32, 'FileTimeToSystemTime', [POINTER(FILETIME), POINTER(SYSTEMTIME)], BOOL)
+PFXExportCertStoreEx = _win32(crypt32, 'PFXExportCertStoreEx', [HCERTSTORE, POINTER(CRYPT_DATA_BLOB), LPCWSTR, c_void_p, DWORD], BOOL)

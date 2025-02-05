@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from enum import Flag
 
+from cryptography.hazmat.primitives.serialization import pkcs12
+
 class KeyUsage(Flag):
     CERT_DATA_ENCIPHERMENT_KEY_USAGE = 0x10
     CERT_DIGITAL_SIGNATURE_KEY_USAGE = 0x80
@@ -78,6 +80,62 @@ def get_key_usage(cert_info):
 
     return flags.value
 
+def export_pkcs12(store):
+    REPORT_NO_PRIVATE_KEY = 0x1
+    REPORT_NOT_ABLE_TO_EXPORT_PRIVATE_KEY = 0x2
+    EXPORT_PRIVATE_KEYS = 0x4
+    PKCS12_INCLUDE_EXTENDED_PROPERTIES = 0x10
+
+    FLAGS = REPORT_NO_PRIVATE_KEY | REPORT_NOT_ABLE_TO_EXPORT_PRIVATE_KEY | EXPORT_PRIVATE_KEYS | PKCS12_INCLUDE_EXTENDED_PROPERTIES
+
+    pkcs12_blob = CRYPTOAPI_BLOB()
+    s = PFXExportCertStoreEx(store, byref(pkcs12_blob), '', None, FLAGS)
+    if s==0:
+        err = GetLastError()
+        errmsg = FormatError(err)
+        raise OSError(err, errmsg)
+
+    cbSize = pkcs12_blob.cbData
+    buf = bytearray(cbSize)
+    LP_c_ubyte = BYTE * 1
+    c_buf = LP_c_ubyte.from_buffer(buf)
+    pkcs12_blob.pbData = c_buf
+    s = PFXExportCertStoreEx(store, byref(pkcs12_blob), '', None, FLAGS)
+    if s==0:
+        err = GetLastError()
+        errmsg = FormatError(err)
+        raise OSError(err, errmsg)
+
+    private_key, cert, certs = pkcs12.load_key_and_certificates(buf, None)
+
+    return private_key, cert
+
+def add_cert_context_to_store(cert_info: CertificateInfo):
+    CERT_STORE_PROV_MEMORY = 0x2
+    store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, None, 0, None)
+    if not store:
+        err = GetLastError()
+        errmsg = FormatError(err)
+        raise OSError(err, errmsg)
+
+    CERT_STORE_ADD_ALWAYS = 0x4
+    s = CertAddCertificateContextToStore(store, cert_info, CERT_STORE_ADD_ALWAYS, None)
+    if s==0:
+        err = GetLastError()
+        errmsg = FormatError(err)
+        raise OSError(err, errmsg)
+
+    private_key, cert = export_pkcs12(store)
+
+    CERT_CLOSE_STORE_FORCE_FLAG = 0x1
+    s = CertCloseStore(store, CERT_CLOSE_STORE_FORCE_FLAG)
+    if s==0:
+        err = GetLastError()
+        errmsg = FormatError(err)
+        raise OSError(err, errmsg)
+
+    return private_key, cert
+
 class SystemStore:
     def __init__(self, store_name: str):
         self.store_name = store_name
@@ -111,17 +169,18 @@ class SystemStore:
 
             cert_ctx = cert_ctx_p[0]
             name = get_name(cert_ctx_p)
-            cert_info = cert_ctx.pCertInfo.contents
-            yield name, cert_info
+            yield name, cert_ctx
 
     def filter_certs(self, filter: Callable[[CertificateInfo], bool]):
-        for name, cert_info in self.iter_certs():
+        for name, cert_ctx in self.iter_certs():
+            cert_info = cert_ctx.pCertInfo.contents
             sn_count = cert_info.serialNumber.cbData
             sn_data = cert_info.serialNumber.pbData
             sn = sn_data[:sn_count]
             sn_int = int.from_bytes(bytes(sn), 'little')
             ku = get_key_usage(cert_info)
 
+            # TODO add extended key usage
             ci = CertificateInfo(
                 name=name,
                 version=cert_info.dwVersion,
@@ -132,7 +191,10 @@ class SystemStore:
                 not_after=to_datetime(cert_info.notAfter),
                 key_usage=ku
             )
-            filter(ci)
+            selected = filter(ci)
+            if selected:
+                print('*SELECTED*')
+                return add_cert_context_to_store(cert_ctx)
 
     def __enter__(self):
         self.open()
@@ -149,12 +211,14 @@ if __name__=='__main__':
         print('CERTIFICATE INFO')
         print(ci)
         print(ci.serial_as_hex)
-        return False
 
+        return (ci.key_usage & KeyUsage.CERT_DIGITAL_SIGNATURE_KEY_USAGE.value) != 0
+
+    private_key, cert = None, None
     with SystemStore('MY') as store:
         print(store)
-        # for ci in store.iter_certs():
-        #     print(ci)
-        #     print(ci.serial_as_hex)
 
-        store.filter_certs(filter)
+        private_key, cert = store.filter_certs(filter)
+
+    print(f'{private_key=}')
+    print(f'{cert=}')
