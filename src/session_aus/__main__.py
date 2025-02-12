@@ -2,7 +2,7 @@
 # a private key and cerificate from the Windows system certificate store.
 #
 
-from read_win_certs import CertificateInfo, KeyUsage, SystemStore
+from .read_win_certs import CertificateInfo, KeyUsage, SystemStore
 from datetime import datetime, UTC
 
 if __name__=='__main__':

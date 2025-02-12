@@ -1,0 +1,29 @@
+[project]
+name = "session-aus"
+version = "0.1"
+description = "Custom niquests session using Windows certificates"
+license = {text = "MIT"}
+authors = [
+    {name = "Algol60", email = "algol60 <algol60@users.noreply.github.com>"}
+]
+readme = "README.md"
+keywords = ["windows", "certificates", "session"]
+packages = [{include = "session_aus", from = "src"}]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Software Development :: Libraries"
+]
+requires-python = ">=3.11"
+
+#ignore_missing_imports = true
+
+[project.urls]
+repository = "https://github.com/algol60/win-certs"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

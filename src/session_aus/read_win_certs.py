@@ -1,7 +1,7 @@
 # New style reading certificates from the Windows certificate store.
 #
 
-from win32_h import *
+from .win32_h import *
 import binascii
 from collections.abc import Callable
 from dataclasses import dataclass
