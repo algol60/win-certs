@@ -1,4 +1,4 @@
-# New style reading sertificates from the Windows cetificate store.
+# New style reading certificates from the Windows certificate store.
 #
 
 from win32_h import *
@@ -8,7 +8,14 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from enum import Flag
 
+from ssl import SSLError
+
 from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
+from cryptography.x509 import Certificate
+
+class WinCertError(SSLError):
+    pass
 
 class KeyUsage(Flag):
     CERT_DATA_ENCIPHERMENT_KEY_USAGE = 0x10
@@ -32,6 +39,11 @@ class CertificateInfo:
 
     @property
     def serial_as_hex(self):
+        """Displays the certificate serial number as a hexadecimal string.
+
+        The serial number is a little-endian int, but is iften displayed
+        in hex bytes."""
+
         b = self.serial.to_bytes(self.serial.bit_length()//8+1, 'big')
 
         return binascii.b2a_hex(b).decode('ascii')
@@ -110,7 +122,7 @@ def export_pkcs12(store):
 
     return private_key, cert
 
-def add_cert_context_to_store(cert_info: CertificateInfo):
+def get_key_and_cert(cert_info: CertificateInfo):
     CERT_STORE_PROV_MEMORY = 0x2
     store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, None, 0, None)
     if not store:
@@ -137,13 +149,23 @@ def add_cert_context_to_store(cert_info: CertificateInfo):
     return private_key, cert
 
 class SystemStore:
+    """Convenience class for accessing a Windows system certificate store."""
+
     def __init__(self, store_name: str):
+        # If the store name isn't one of the pre-defined stores,
+        # a new store will be created. We want to avoid this.
+        #
+        if store_name not in ('CA', 'MY', 'ROOT', 'SPC'):
+            raise WinCertError('Not a valid store name')
+
         self.store_name = store_name
         self._store = None
 
     def open(self):
+        """Open the store."""
+
         if self._store is not None:
-            raise ValueError(f'Store {self.store_name} is already open')
+            raise WinCertError(f'Store {self.store_name} is already open')
 
         self._store = CertOpenSystemStore(None, self.store_name)
         if not self._store:
@@ -152,6 +174,8 @@ class SystemStore:
             raise OSError(errmsg)
 
     def close(self):
+        """Close the store."""
+
         r = CertCloseStore(self._store, 0)
         self._store = None
         if r==0:
@@ -171,7 +195,36 @@ class SystemStore:
             name = get_name(cert_ctx_p)
             yield name, cert_ctx
 
-    def filter_certs(self, filter: Callable[[CertificateInfo], bool]):
+    def find_key_and_cert(self, filter: Callable[[CertificateInfo], bool]) -> tuple[PrivateKeyTypes, Certificate]:
+        """Find a certificate.
+
+        This method uses ``iter_certs()`` to retrieve each certificate
+        from the store. Relevant data from the certificate is extracted
+        into a ``CertificateInfo`` instance, which is passed to
+        the ``filter`` function.
+
+        The ``filter`` function must return a ``bool``. If the result is False,
+        the certificate is skipped. If the result is True, ``find_cert`` returns
+        a tuple containing the private key and certificate.
+
+        Parameters
+        ----------
+        filter: Callable[[CertificateInfo], bool]
+            A callback function that accepts a ``CertificateInfo`` instance
+            and determines if this is a suitable certificate.
+            Must return True or False.
+
+        Returns
+        -------
+        tuple[PrivateKeyTypes, Certificate]
+            A tuple containing the private key and certificate found using the filter.
+
+        Raises
+        ------
+        WinCertError
+            If the filter does not find a certificate.
+        """
+
         for name, cert_ctx in self.iter_certs():
             cert_info = cert_ctx.pCertInfo.contents
             sn_count = cert_info.serialNumber.cbData
@@ -180,7 +233,7 @@ class SystemStore:
             sn_int = int.from_bytes(bytes(sn), 'little')
             ku = get_key_usage(cert_info)
 
-            # TODO add extended key usage
+            # TODO add extended key usage?
             ci = CertificateInfo(
                 name=name,
                 version=cert_info.dwVersion,
@@ -192,15 +245,24 @@ class SystemStore:
                 key_usage=ku
             )
             selected = filter(ci)
+
             if selected:
-                print('*SELECTED*')
-                return add_cert_context_to_store(cert_ctx)
+                private_key, cert = get_key_and_cert(cert_ctx)
+                CertFreeCertificateContext(cert_ctx)
+
+                return private_key, cert
+
+        raise WinCertError('No certificate found')
 
     def __enter__(self):
+        """Context manager."""
+
         self.open()
         return self
 
     def __exit__(self, exc, value, tb):
+        """Context manager."""
+
         self.close()
 
     def __repr__(self):
@@ -218,7 +280,7 @@ if __name__=='__main__':
     with SystemStore('MY') as store:
         print(store)
 
-        private_key, cert = store.filter_certs(filter)
+        private_key, cert = store.find_key_and_cert(filter)
 
     print(f'{private_key=}')
     print(f'{cert=}')

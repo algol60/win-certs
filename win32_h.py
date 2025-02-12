@@ -1,15 +1,17 @@
+# This module is effectively a C .h file.
 #
-
+# It's fine to "from win32_h import *" to get all of these names,
+# since this module is for our internal use only.
+#
 # Crypt functions are documented at
 # https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/
 #
 
-from ctypes import WinDLL, GetLastError
-from ctypes import WinDLL, FormatError, string_at, pointer
+from ctypes import WinDLL, GetLastError, FormatError, string_at, pointer
 from ctypes import create_unicode_buffer, resize, c_int, c_ubyte, c_uint, c_short, byref, create_string_buffer, cast
 from ctypes import Structure, POINTER, c_void_p
 from ctypes.wintypes import LPCWSTR, LPSTR, WORD, DWORD, BOOL, BYTE, LPWSTR, LPCSTR
-from ctypes import GetLastError
+from ctypes import _SimpleCData
 
 from typing import Any
 
@@ -19,11 +21,16 @@ kernel32 = WinDLL('kernel32.dll')
 def _win32(dll: WinDLL, name: str, argtypes: list[Any], restype: Any) -> WinDLL:
     """Access a function from a DLL.
 
-    The name is added to the module's namespace using globals().
-    This avoids having to specify the name twice.
-
-    The name parameter is the name stored in the module.
-    The suffix parameter specifies A or W for the actual function in the DLL.
+    Parameters
+    ----------
+    dll: WinDLL
+        The Windows DLL from which functions are accessed.
+    name: str
+        The name of the function.
+    argtypes: list[_SimpleCData]
+        The argument types of this function.
+    restype: _SimpleCData
+        The result type of the function.
     """
 
     func = getattr(dll, name)
@@ -108,6 +115,7 @@ class SYSTEMTIME(Structure):
 
 CertAddCertificateContextToStore = _win32(crypt32, 'CertAddCertificateContextToStore', [HCERTSTORE, POINTER(CERT_CONTEXT), DWORD, POINTER(CERT_CONTEXT)], BOOL)
 CertCloseStore = _win32(crypt32, 'CertCloseStore', [HCERTSTORE, DWORD], BOOL)
+CertFreeCertificateContext = _win32(crypt32, 'CertFreeCertificateContext', [POINTER(CERT_CONTEXT)], BOOL)
 CertEnumCertificatesInStore = _win32(crypt32, 'CertEnumCertificatesInStore', [HCERTSTORE, POINTER(CERT_CONTEXT)], POINTER(CERT_CONTEXT))
 CertGetIntendedKeyUsage = _win32(crypt32, 'CertGetIntendedKeyUsage', [DWORD, POINTER(CERT_INFO), POINTER(BYTE), DWORD], BOOL)
 CertGetNameString = _win32(crypt32, 'CertGetNameStringW', [POINTER(CERT_CONTEXT), DWORD, DWORD, c_void_p, LPWSTR, DWORD], DWORD)
