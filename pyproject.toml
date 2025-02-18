@@ -1,6 +1,6 @@
 [project]
 name = "session-aus"
-version = "0.1"
+version = "0.2"
 description = "Custom niquests session using Windows certificates"
 license = {text = "MIT"}
 authors = [

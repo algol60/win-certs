@@ -230,6 +230,12 @@ class SystemStore:
             sn_count = cert_info.serialNumber.cbData
             sn_data = cert_info.serialNumber.pbData
             sn = sn_data[:sn_count]
+
+            # In Python 3.12, these are unsigned bytes.
+            # In Python 3.11, these are signed bytes, which breaks int.from_bytes().
+            #
+            sn = [b+256 if b<0 else b for b in sn]
+
             sn_int = int.from_bytes(bytes(sn), 'little')
             ku = get_key_usage(cert_info)
 
